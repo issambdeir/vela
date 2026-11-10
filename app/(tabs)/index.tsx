@@ -1,98 +1,230 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  StyleSheet,
+  SafeAreaView,
+  StatusBar,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase';
 
-export default function HomeScreen() {
+const SYMPTOMS = [
+  'Headache', 'Fatigue', 'Nausea', 'Joint Pain',
+  'Dizziness', 'Chest Pain', 'Shortness of Breath',
+  'Back Pain', 'Stomach Ache', 'Anxiety',
+  'Insomnia', 'Brain Fog',
+];
+
+export default function LogScreen() {
+  const router = useRouter();
+  const [session, setSession] = useState<any>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [selectedSymptom, setSelectedSymptom] = useState<string | null>(null);
+  const [severity, setSeverity] = useState<number>(5);
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [logged, setLogged] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [greeting, setGreeting] = useState('');
+  const [firstName, setFirstName] = useState('');
+
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting('Good morning');
+    else if (hour < 18) setGreeting('Good afternoon');
+    else setGreeting('Good evening');
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setSession(session);
+      setCheckingAuth(false);
+      if (!session) router.replace('/auth');
+
+      if (session) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', session.user.id)
+          .single();
+        if (data?.full_name) setFirstName(data.full_name.split(' ')[0]);
+      }
+    });
+  }, []);
+
+  if (checkingAuth) return null;
+
+  const handleLog = async () => {
+    if (!selectedSymptom) return;
+    setLoading(true);
+    setError(null);
+
+    const { error } = await supabase.from('symptoms').insert({
+      symptom: selectedSymptom,
+      severity,
+      note,
+      user_id: session?.user?.id ?? null,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError('Could not save. Try again.');
+    } else {
+      setLogged(true);
+      setTimeout(() => {
+        setLogged(false);
+        setSelectedSymptom(null);
+        setSeverity(5);
+        setNote('');
+      }, 2000);
+    }
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="dark-content" />
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.greeting}>{greeting}{firstName ? `, ${firstName}` : ''}</Text>
+            <Text style={styles.appName}>vela</Text>
+            <Text style={styles.subtitle}>How are you feeling right now?</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/profile')} style={styles.profileBtn}>
+            <Text style={styles.profileBtnText}>
+              {firstName ? firstName[0].toUpperCase() : '?'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.label}>Select a symptom</Text>
+        <View style={styles.chipGrid}>
+          {SYMPTOMS.map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.chip, selectedSymptom === s && styles.chipSelected]}
+              onPress={() => setSelectedSymptom(s)}
+            >
+              <Text style={[styles.chipText, selectedSymptom === s && styles.chipTextSelected]}>
+                {s}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {selectedSymptom && (
+          <View style={styles.severitySection}>
+            <Text style={styles.label}>Severity — <Text style={styles.severityNum}>{severity} / 10</Text></Text>
+            <View style={styles.severityRow}>
+              {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  style={[styles.severityBtn, severity === n && styles.severityBtnSelected]}
+                  onPress={() => setSeverity(n)}
+                >
+                  <Text style={[styles.severityBtnText, severity === n && styles.severityBtnTextSelected]}>
+                    {n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {selectedSymptom && (
+          <View style={styles.noteSection}>
+            <Text style={styles.label}>Note <Text style={styles.optional}>(optional)</Text></Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Anything else? e.g. started after lunch"
+              placeholderTextColor="#AAAAAA"
+              value={note}
+              onChangeText={setNote}
+              multiline
+            />
+          </View>
+        )}
+
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
+        {selectedSymptom && (
+          <TouchableOpacity
+            style={[styles.logBtn, logged && styles.logBtnSuccess]}
+            onPress={handleLog}
+            disabled={loading || logged}
+          >
+            {loading
+              ? <ActivityIndicator color="#FFF" />
+              : <Text style={styles.logBtnText}>{logged ? '✓ Saved to Vela' : 'Log symptom'}</Text>
+            }
+          </TouchableOpacity>
+        )}
+
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
+const TEAL = '#0F6E56';
+
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  safe: { flex: 1, backgroundColor: '#FAFAF9' },
+  container: { padding: 24, paddingBottom: 60 },
+  headerRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-start', marginBottom: 24, marginTop: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  greeting: { fontSize: 13, color: '#AAA', marginBottom: 2 },
+  appName: { fontSize: 28, fontWeight: '700', color: TEAL, letterSpacing: -0.5, marginBottom: 2 },
+  subtitle: { fontSize: 15, color: '#555', fontWeight: '400' },
+  profileBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: TEAL, alignItems: 'center', justifyContent: 'center',
+    marginTop: 4,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  profileBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  label: { fontSize: 13, fontWeight: '600', color: '#888', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  optional: { fontWeight: '400', textTransform: 'none', color: '#AAAAAA' },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 999, borderWidth: 1,
+    borderColor: '#DDD', backgroundColor: '#FFF',
   },
+  chipSelected: { backgroundColor: TEAL, borderColor: TEAL },
+  chipText: { fontSize: 13, color: '#444', fontWeight: '500' },
+  chipTextSelected: { color: '#FFF' },
+  severitySection: { marginBottom: 24 },
+  severityNum: { color: TEAL, fontWeight: '700' },
+  severityRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  severityBtn: {
+    width: 36, height: 36, borderRadius: 8,
+    borderWidth: 1, borderColor: '#DDD',
+    backgroundColor: '#FFF',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  severityBtnSelected: { backgroundColor: TEAL, borderColor: TEAL },
+  severityBtnText: { fontSize: 13, color: '#555', fontWeight: '500' },
+  severityBtnTextSelected: { color: '#FFF', fontWeight: '700' },
+  noteSection: { marginBottom: 28 },
+  input: {
+    borderWidth: 1, borderColor: '#E0E0E0',
+    borderRadius: 12, padding: 14,
+    fontSize: 14, color: '#333',
+    backgroundColor: '#FFF', minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  logBtn: {
+    backgroundColor: TEAL, borderRadius: 14,
+    paddingVertical: 16, alignItems: 'center',
+  },
+  logBtnSuccess: { backgroundColor: '#2E7D5E' },
+  logBtnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  errorText: { color: '#CC3333', fontSize: 13, marginBottom: 12, textAlign: 'center' },
 });
